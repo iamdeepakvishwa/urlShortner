@@ -3,12 +3,13 @@ const app = new Vue({
     data:{
         url: '',
         slug: '',
-        errror:'',
+        error:'',
         formVisible: true,
         created: null,
     },
     methods:{
         async createUrl(){
+            this.error = '';
             const response = await fetch('/url',{
                 method : 'POST',
                 headers: {
@@ -16,15 +17,15 @@ const app = new Vue({
                 },
                 body:JSON.stringify({
                     url: this.url,
-                    slug : this.slug || undefined,
+                    slug : this.slug || undefined ,
                 }),
             });
             if(response.ok){
                 const result = await response.json();
                 this.formVisible  = false;
-                this.created = `https://vsg-sh.herokuapp.com/${result.slug}`;
+                this.created = `https://vsg-sh.herokuapp.com/${result.created.slug}`;
             }
-            else if(res.status === 429){
+            else if(response.status === 429){
                 this.error = 'You are sending too many requests. Try again in 30 seconds.';
             }
             else{

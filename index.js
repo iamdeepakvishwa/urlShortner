@@ -1,9 +1,11 @@
 const express = require('express');
-const cors = require('cors');
+const path = require('path');
 const morgan = require('morgan');
 const helmet = require('helmet');
 const yup = require('yup');
 const monk = require('monk');
+const rateLimit = require('express-rate-limit');
+const slowDown = require('express-slow-down');
 const {nanoid} = require('nanoid');
 require('dotenv').config()
 
@@ -12,14 +14,15 @@ const urls = db.get('urls');
 urls.createIndex({ slug: 1 }, { unique: true });
 
 const app = express();
+app.enable('trust proxy');
 
 
-app.use(morgan('tiny'));
+app.use(morgan('common'));
 app.use(helmet());
-app.use(cors());
 app.use(express.json());
 app.use(express.static('./public'));
 
+const notFoundPath = path.join(__dirname, 'public/404.html');
 
 app.get('/:id',async(req,res,next)=>{
     // Redirect to the Url
@@ -27,11 +30,11 @@ app.get('/:id',async(req,res,next)=>{
     try{
         const url = await(urls.findOne({slug}));
         if(url){
-            res.redirect(url.url);
+            return res.redirect(url.url);
         }
-        res.redirect(`/?error=${slug} not found`);
+        return res.status(404).sendFile(notFoundPath);
     }catch(error){
-        res.redirect(`/?error=Link Not Found`);
+        return res.status(404).sendFile(notFoundPath);
     }
 });
 
@@ -40,38 +43,45 @@ const schema = yup.object().shape({
     url: yup.string().url().required(),
 })
 
-app.post('/url',async(req,res,next)=>{
-    // create a short url
-    let {slug,url} = req.body;
-    try{
-        await schema.validate({
-            slug,
-            url,
-        });
-        if (url.includes('vsg.sh')) {
-            throw new Error('Stop it. 🛑');
-        }
-        if(!slug){
-            slug = nanoid(5);
-        }
-        else{
-            const existing  = await urls.findOne({slug});
-            if(existing){
-                throw new Error('slug in use ');
+app.post('/url', slowDown({
+        windowMs: 30 * 1000,
+        delayAfter: 1,
+        delayMs: 500,
+    }),rateLimit({
+        windowMs: 30 * 1000,
+        max: 1,
+    }),async(req,res,next)=>{
+        // create a short url
+        let {slug,url} = req.body;
+        try{
+            await schema.validate({
+                slug,
+                url,
+            });
+            if (url.includes('vsg.sh')) {
+                throw new Error('Stop it. 🛑');
             }
+            if(!slug){
+                slug = nanoid(5);
+            }
+            else{
+                const existing  = await urls.findOne({slug});
+                if(existing){
+                    throw new Error('slug in use ');
+                }
+            }
+            slug = slug.toLowerCase();
+            const newUrl = {
+                url,
+                slug,
+            }
+            const created = await urls.insert(newUrl);
+            res.json({
+                created
+            });
+        }catch(error){
+            next(error);
         }
-        slug = slug.toLowerCase();
-        const newUrl = {
-            url,
-            slug,
-        }
-        const created = await urls.insert(newUrl);
-        res.json({
-            created
-        });
-    }catch(error){
-        next(error);
-    }
 });
 
 app.use((req, res, next) => {
@@ -87,7 +97,7 @@ app.use((error,req,res,next)=>{
     }
     res.json({
         message: error.message,
-        stack: process.env.NODE_ENV==='PRODUCTION'? '{🙂}' :error.stack,
+        stack: process.env.NODE_ENV==='PRODUCTION'? '{🥞}' :error.stack,
     });
 });
 
