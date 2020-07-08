@@ -36,7 +36,7 @@ app.get('/:id',async(req,res,next)=>{
 });
 
 const schema = yup.object().shape({
-    slug : yup.string().trim().matches(/[\w\-]/i),
+    slug : yup.string().trim().matches(/^[\w\-]+$/i),
     url: yup.string().url().required(),
 })
 
@@ -48,6 +48,9 @@ app.post('/url',async(req,res,next)=>{
             slug,
             url,
         });
+        if (url.includes('vsg.sh')) {
+            throw new Error('Stop it. 🛑');
+        }
         if(!slug){
             slug = nanoid(5);
         }
@@ -69,7 +72,11 @@ app.post('/url',async(req,res,next)=>{
     }catch(error){
         next(error);
     }
-})
+});
+
+app.use((req, res, next) => {
+  res.status(404).sendFile(notFoundPath);
+});
 
 app.use((error,req,res,next)=>{
     if(error.status){
